@@ -31,20 +31,30 @@
   }
   function derivative(s,z,c){const f=forces(s,z,c),ax=f.Fx/mass,ay=f.Fy/mass;return {x:z.u*Math.cos(z.psi)-z.v*Math.sin(z.psi),y:z.u*Math.sin(z.psi)+z.v*Math.cos(z.psi),psi:z.r,u:z.r*z.v+ax,v:-z.r*z.u+ay,r:f.moment/inertia,ax:(ax-z.ax)/.15,ay:(ay-z.ay)/.15}}
   const plus=(z,d,h)=>Object.fromEntries(Object.keys(z).map(k=>[k,z[k]+d[k]*h]));
-  function step(s,z,c,h){const k1=derivative(s,z,c),k2=derivative(s,plus(z,k1,h/2),c),k3=derivative(s,plus(z,k2,h/2),c),k4=derivative(s,plus(z,k3,h),c);return Object.fromEntries(Object.keys(z).map(k=>[k,z[k]+h*(k1[k]+2*k2[k]+2*k3[k]+k4[k])/6]))}
-  function simulate(s,inputs={},duration=3,dt=1/120){
+  // A prescribed steering manoeuvre, evaluated at every RK4 stage. No drift controller.
+  function steeringAt(s,t,program){
+    if(!program?.length)return s.steer;
+    if(t<=program[0].t)return program[0].steer;
+    for(let i=1;i<program.length;i++)if(t<=program[i].t){const a=program[i-1],b=program[i],q=(t-a.t)/(b.t-a.t);return a.steer+(b.steer-a.steer)*q}
+    return program.at(-1).steer;
+  }
+  function step(s,z,c,h,t=0,program=null){const at=time=>program?{...s,steer:steeringAt(s,time,program)}:s;const k1=derivative(at(t),z,c),k2=derivative(at(t+h/2),plus(z,k1,h/2),c),k3=derivative(at(t+h/2),plus(z,k2,h/2),c),k4=derivative(at(t+h),plus(z,k3,h),c);return Object.fromEntries(Object.keys(z).map(k=>[k,z[k]+h*(k1[k]+2*k2[k]+2*k3[k]+k4[k])/6]))}
+  function simulate(s,inputs={},duration=3,dt=1/120,options={}){
     let z=initial(s),reason=null;const frames=[],steps=Math.ceil(duration/dt),h=duration/steps;
     for(let i=0;i<=steps;i++){
-      const f=forces(s,z,inputs),t=i*h;
+      const t=i*h,commandedSteer=steeringAt(s,t,options.program),f=forces({...s,steer:commandedSteer},z,inputs);
       if(!Number.isFinite(z.x+z.y+z.r+z.u+z.v))throw Error('Non-finite dynamics state');
-      if(i>0){if(f.speed<8)reason='Speed ниже 8 km/h';else if(Math.abs(f.beta)>80)reason='Drift angle превысил 80°';else if(Math.abs(f.yaw)>150)reason='Yaw rate превысил 150°/s';else if(f.lift)reason='Разгрузка колеса до нуля'}
-      if(i%2===0||i===steps||reason)frames.push({t,...z,...f});
+      if(i>0){if(f.speed<8)reason='Speed ниже 8 km/h';else if(Math.abs(f.beta)>80)reason='Drift angle превысил 80°';else if(Math.abs(f.yaw)>150)reason='Yaw rate превысил 150°/s';else if(f.lift)reason='Разгрузка колеса до нуля';else if(options.stopOnReversal&&Math.abs(s.beta)>.5&&f.beta*Math.sign(s.beta)<=.5)reason='Исходная сторона заноса потеряна'}
+      if(i%2===0||i===steps||reason)frames.push({t,...z,...f,commandedSteer});
       if(reason||i===steps)break;
-      z=step(s,z,inputs,h);
+      z=step(s,z,inputs,h,t,options.program);
     }
     return {frames,reason,duration:frames.at(-1).t,setup:{...s},inputs:{...defaults,...inputs}};
   }
   function frameAt(run,t){let lo=0,hi=run.frames.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(run.frames[mid].t<=t+1e-8)lo=mid;else hi=mid-1}return run.frames[lo]}
-  const api={mass,inertia,defaults,initial,combined,forces,derivative,step,simulate,frameAt};
+  // Path curvature includes changing sideslip; yaw rate / speed is not equivalent.
+  function curvature(z){return (z.u*z.Fy-z.v*z.Fx)/(mass*Math.max(1e-9,Math.hypot(z.u,z.v)**3))}
+  function outward(reference,current,turn){const heading=reference.psi+Math.atan2(reference.v,reference.u);return -Math.sign(turn)*(-Math.sin(heading)*(current.x-reference.x)+Math.cos(heading)*(current.y-reference.y))}
+  const api={mass,inertia,defaults,initial,combined,forces,derivative,step,simulate,frameAt,steeringAt,curvature,outward};
   root.DriftDynamics=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

@@ -37,7 +37,7 @@
     if(goal==='quiet')score-=20*trail.forceRatio+10*trail.meanMoment/(1250*9.81*.55*s.mu*(s.wheelbase/1000*.45));
     return {setup:{...s},stats,points,score};
   }
-  function candidates(s){const out=[];for(const kpi of [8,10,12])for(let caster=4;caster<=6.5;caster+=.5)for(let camber=-5;camber<=-3;camber+=.25)out.push({...s,kpi,caster,camber});return out}
+  function candidates(s,offsets=[s.ack]){const out=[];for(const ack of offsets)for(const kpi of [8,10,12])for(let caster=4;caster<=6.5;caster+=.5)for(let camber=-5;camber<=-3;camber+=.25)out.push({...s,ack,kpi,caster,camber});return out}
   function matchAck(s,reference,wheel=leading(s)??1,metric='moment'){
     const targetAngle=M.calculate(s).wheels[wheel].delta;
     const base={...reference,beta:s.beta,yaw:s.yaw,speed:s.speed};
