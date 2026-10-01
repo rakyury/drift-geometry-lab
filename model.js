@@ -24,9 +24,9 @@ function suspensionRates(s){const springNmm=(s.springRate??8)*9.80665,motionRati
 // Inputs are toe changes measured at +25 mm bump and -25 mm rebound, not hardpoints.
 function bumpToeAt(s,z){const a=s.bumpToe??0,b=s.reboundToe??0;return (a-b)*z/50+(a+b)*z*z/1250}
 function bumpKinematics(s,roll){return [1,-1].map((side,i)=>{const manualTravel=(i?s.wheelTravelRF:s.wheelTravelLF)??0,rollTravel=(s.bumpFromRoll??1)?-side*s.track/2*Math.tan(roll):0,requestedTravel=manualTravel+rollTravel,travel=clamp(requestedTravel,-75,75),toeChange=bumpToeAt(s,travel);return {manualTravel,rollTravel,requestedTravel,travel,toeChange,bumpDelta:-side*toeChange,toeMm:2*tyreRadius(s)*Math.sin(toeChange*rad),travelLimited:Math.abs(requestedTravel)>75}})}
-function calculate(s,shock=0){
- const rates=suspensionRates(s),m=1250,front=.55,cg=.52,K=rates.totalRoll,L=s.wheelbase/1000,T=s.track/1000,a=L*(1-front),u=s.speed/3.6*Math.cos(s.beta*rad),v=s.speed/3.6*Math.sin(s.beta*rad),r=s.yaw*rad,ay=u*r,rc=s.rc/1000,rollAxis=front*rc+(1-front)*.08;
- const roll=m*ay*(cg-rollAxis)/K,geom=m*front*ay*rc/T,elastic=rates.frontRoll*roll/T,transfer=geom+elastic,base=m*9.81*front/2,bump=bumpKinematics(s,roll),baseDeltas=angles(s),deltas=baseDeltas.map((d,i)=>d+bump[i].bumpDelta),ap=angles({...s,steer:s.steer+.001}),am=angles({...s,steer:s.steer-.001});
+function calculate(s,shock=0,motion=null){
+ const rates=suspensionRates(s),m=1250,front=.55,cg=.52,K=rates.totalRoll,L=s.wheelbase/1000,T=s.track/1000,a=L*(1-front),u=s.speed/3.6*Math.cos(s.beta*rad),v=s.speed/3.6*Math.sin(s.beta*rad),r=s.yaw*rad,ay=motion?.ay??u*r,rc=s.rc/1000,rollAxis=front*rc+(1-front)*.08;
+ const roll=m*ay*(cg-rollAxis)/K,geom=m*front*ay*rc/T,elastic=rates.frontRoll*roll/T,transfer=geom+elastic,base=clamp(m*9.81*front-m*(motion?.ax??0)*cg/L,0,m*9.81)/2,bump=bumpKinematics(s,roll),baseDeltas=angles(s),deltas=baseDeltas.map((d,i)=>d+bump[i].bumpDelta),ap=angles({...s,steer:s.steer+.001}),am=angles({...s,steer:s.steer-.001});
  const wheels=[1,-1].map((side,i)=>{
   const delta=deltas[i]*rad,y=side*T/2,vx=u-r*y,vy=v+r*a,direction=Math.atan2(vy,vx),alpha=delta-direction,Fz=clamp(base-side*transfer,0,base*2),g=wheelGeometry(s,side,delta,roll);
   const capacity=s.mu*3372*Math.pow(Fz/3372,.9)/(1+Math.pow(g.camber/18,2)),effectiveAlpha=alpha+side*g.camber*rad*.08;
