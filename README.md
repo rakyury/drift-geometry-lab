@@ -4,7 +4,7 @@
 Интерфейс и пояснения на русском, названия параметров на английском.
 
 Ackermann, Caster, KPI, Camber, Mechanical trail, Scrub radius, Roll center,
-Bump steer, Front spring rate, Slip angle и расчётная оценка Contact patch.
+Bump steer, Front spring rate, Front anti-dive, Rear anti-squat, Slip angle и расчётная оценка Contact patch.
 Графики показывают изменения LF и RF по диапазону Steering angle.
 
 ## Запуск
@@ -106,3 +106,61 @@ Arc illustration в Ackermann / Path сохраняет β, V и кривизн�
 `node tests/clarity-audit.cjs` проверяет согласованность нагрузки и площади,
 три типа Ackermann, геометрию схемы дуг, реакцию Feedback, зеркальность,
 сходимость шага, ограничения руля и 24 сочетания геометрии.
+
+
+## Anti-dive / Anti-squat
+
+Вкладка `#anti` — общий квазистатический опыт продольной нагрузки.
+Ввод: Front anti-dive 0…150% (нормировано при Front brake bias 65%),
+Rear anti-squat 0…150%, Longitudinal acceleration −1…1 g,
+Front brake bias 0…100%, Rear wheel rate 10…150 N/mm.
+0% — нейтральная исходная настройка; 55 N/mm сзади — условное значение.
+
+При m = 1250 kg, h = 0,52 m, L = Wheelbase:
+- ΔFz,rear = m·ax·h/L; ΔFz,front = −ΔFz,rear.
+- cF = AntiDive/100 · h/(L·0,65); cR = AntiSquat/100 · h/L.
+- GeoFront = actual front braking force · cF.
+- GeoRear = actual rear drive force · cR.
+- Front pitch travel = (ΔFz,front − GeoFront)/(2·front wheel rate).
+- Rear pitch travel = (ΔFz,rear − GeoRear)/(2·rear wheel rate).
+
+Anti не уменьшает общий перенос веса и не является множителем сцепления.
+100% компенсирует добавочное сжатие выбранной оси в эталонном опыте,
+но не обнуляет движение противоположной оси. На статической схеме
+база сравнения — 0% обоих Anti при тех же нагрузках и жёсткости.
+В «Разобраться» пунктир соответствует сохранённым настройкам и его метрикам.
+
+Front pitch travel добавляется к manual travel и roll travel до кривой
+Bump steer и ограничения ±75 mm. Изменяются Toe change, фактический
+Steering angle и зависящие от него силы. Сама кривая Toe не меняется.
+В динамике ax и реализованные силы торможения/тяги сглаживаются с 0,15 s;
+Ax из статического ползунка не подменяет ускорение прогона. Внешняя
+аэродинамическая или боковая тормозящая сила не выдаётся за передний тормоз.
+
+Предположения: вся масса сосредоточена на кузове; Rear anti-lift и Front
+anti-lift нулевые. Жёсткость задней оси на крен остаётся 65 kN·m/rad.
+Нет pitch inertia/damping, hardpoint solver, заднего toe/camber gain,
+изменения Caster от хода или деформации шин. Поэтому Rear anti-squat
+меняет рассчитанное приседание, но сам по себе не меняет planar rear grip.
+Влияние этой модели на реальную машину без её кинематики не валидировано.
+
+Источники: [RACE anti-properties](https://race.software/academy/suspension-designer-library/anti-dive-and-anti-lift-and-anti-squat/),
+[OptimumG: geometry, elastic reaction and brake distribution](https://optimumg.com/wp-content/uploads/2024/03/OptimumG-V32N4.pdf).
+Проверка: `node tests/anti-geometry.cjs` — сохранение нагрузки, 0/50/100/150%,
+Brake bias, неактивные режимы, Bump steer, зеркальность и сходимость динамики,
+отсутствие искусственного увеличения grip и 36 сочетаний статического опыта.
+
+
+## High roll center / Roll jacking
+
+`#roll` adds a front-axle view (seen from behind), RC presets 0 / 60 / 150 / 200 mm, mirrored cornering, spring/ARB controls and live analysis. `Разобраться` contains separate Roll center and Roll jacking lessons. Parameter labels stay English; explanations remain Russian.
+
+The existing RC model remains active: roll moment uses the front/rear weighted roll-axis height, with rear RC fixed at 80 mm and rear roll stiffness 65 kN·m/rad. Raising front RC reduces elastic roll and changes front/rear load-transfer distribution. `rollAnalysis` shows front/rear geometric and elastic contributions; their whole-car sum equals m·Ay·CG height / track before wheel-lift clipping. “Transfer” is the load added to one side (not the difference between both wheel loads).
+
+`jackingEstimate` is a separate diagnostic of a symmetric front-view equivalent force geometry. For body-frame tyre forces, V_L = −Fy_L·2h_RC/T and V_R = +Fy_R·2h_RC/T; net upward reaction is their signed sum. Equal signed lateral forces cancel; mirrored forces swap vertical reactions and preserve the sum. Estimated front heave is net reaction / (2·front wheel rate), excluding the ARB's roll stiffness. This estimate is not fed back into Fz, contact, wheel travel, Bump steer or trajectories. It is not a full hardpoint, migrating RC, heave/pitch or equilibrium solution, and the prescribed drift state need not be force-balanced. No real-vehicle height or grip claim is made from this diagnostic.
+
+The RC diagram exaggerates height by 2.5 and body roll by 3. Arrows indicate signed reactions, with display lengths bounded for readability. Steering jacking from Caster/KPI is explicitly distinguished from Roll jacking.
+
+Validation: `node tests/roll-jacking.cjs` covers signed projection, zero/negative RC, equal/opposed tyre forces, mirror symmetry, spring vs ARB heave stiffness, conservation of total transfer and 45 combinations of RC, yaw and stiffness. All earlier physics, anti-geometry and driving-target suites also pass.
+
+Sources: [OptimumG, September 2021](https://optimumg.com/wp-content/uploads/2021/10/OptimumG-Septepmber-2021.pdf), [Jahee Campbell-Brennan, Kinematics and Compliance](https://www.racecar-engineering.com/tech-explained/racecar-kinematics-and-compliance/).

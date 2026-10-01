@@ -4,11 +4,11 @@
   const mass=1250,inertia=2100,front=.55,cg=.52,g=9.81;
   const defaults={drive:.35,brake:0,rearGrip:1,brakeBias:.65};
   const wrap=v=>Math.atan2(Math.sin(v),Math.cos(v));
-  function initial(s){const speed=s.speed/3.6;return {x:0,y:0,psi:0,u:speed*Math.cos(s.beta*M.rad),v:speed*Math.sin(s.beta*M.rad),r:s.yaw*M.rad,ax:0,ay:speed*Math.cos(s.beta*M.rad)*s.yaw*M.rad}}
+  function initial(s){const speed=s.speed/3.6;return {x:0,y:0,psi:0,u:speed*Math.cos(s.beta*M.rad),v:speed*Math.sin(s.beta*M.rad),r:s.yaw*M.rad,ax:0,ay:speed*Math.cos(s.beta*M.rad)*s.yaw*M.rad,frontBrakeForce:0,rearDriveForce:0}}
   function combined(Fx,Fy,capacity){const scale=Math.min(1,capacity/Math.max(1e-12,Math.hypot(Fx,Fy)));return {Fx:Fx*scale,Fy:Fy*scale}}
   function forces(s,z,inputs={}){
     const c={...defaults,...inputs},speed=Math.hypot(z.u,z.v),setup={...s,speed:speed*3.6,beta:Math.atan2(z.v,z.u)*M.deg,yaw:z.r*M.deg};
-    const r=M.calculate(setup,0,{ax:z.ax,ay:z.ay}),L=s.wheelbase/1000,T=s.track/1000,a=L*(1-front),b=L*front;
+    const r=M.calculate(setup,0,{ax:z.ax,ay:z.ay,frontBrakeForce:z.frontBrakeForce??0,rearDriveForce:z.rearDriveForce??0}),L=s.wheelbase/1000,T=s.track/1000,a=L*(1-front),b=L*front;
     const rearBase=(mass*g-r.wheels.reduce((sum,w)=>sum+w.Fz,0))/2;
     const rearTransfer=mass*(1-front)*z.ay*.08/T+r.rates.rearRoll*r.roll*M.rad/T;
     const wheels=[];
@@ -21,15 +21,17 @@
       // Rear drive is a prescribed force demand, not a throttle/engine model.
       const requestedFx=(isFront?0:c.drive*capacity)-Math.sign(along)*c.brake*mass*g*(isFront?c.brakeBias:1-c.brakeBias)/2;
       const f=combined(requestedFx,lateral,capacity),bodyFx=f.Fx*Math.cos(delta)-f.Fy*Math.sin(delta),bodyFy=f.Fx*Math.sin(delta)+f.Fy*Math.cos(delta);
-      wheels.push({name:['LF','RF','LR','RR'][i],x,y,delta:delta*M.deg,direction:direction*M.deg,alpha:alpha*M.deg,Fz,capacity,...f,bodyFx,bodyFy,moment:x*bodyFy-y*bodyFx});
+      const forceScale=Math.min(1,capacity/Math.max(1e-12,Math.hypot(requestedFx,lateral)));
+      const brakeReaction=isFront?Math.max(0,-f.Fx*Math.cos(delta)):0,driveReaction=isFront?0:Math.max(0,c.drive*capacity*forceScale);
+      wheels.push({name:['LF','RF','LR','RR'][i],x,y,delta:delta*M.deg,direction:direction*M.deg,alpha:alpha*M.deg,Fz,capacity,...f,bodyFx,bodyFy,brakeReaction,driveReaction,moment:x*bodyFy-y*bodyFx,travel:isFront?r.wheels[i].travel:r.pitch.rearTravel});
     }
     const aerodynamic=.42*speed;
     const Fx=wheels.reduce((sum,w)=>sum+w.bodyFx,0)-aerodynamic*z.u;
     const Fy=wheels.reduce((sum,w)=>sum+w.bodyFy,0)-aerodynamic*z.v;
     const moment=wheels.reduce((sum,w)=>sum+w.moment,0);
-    return {wheels,Fx,Fy,moment,roll:r.roll,speed:speed*3.6,beta:setup.beta,yaw:setup.yaw,lift:wheels.some(w=>w.Fz<1)};
+    return {wheels,Fx,Fy,moment,roll:r.roll,pitch:r.pitch,frontBrakeTarget:wheels.reduce((n,w)=>n+w.brakeReaction,0),rearDriveTarget:wheels.reduce((n,w)=>n+w.driveReaction,0),speed:speed*3.6,beta:setup.beta,yaw:setup.yaw,lift:wheels.some(w=>w.Fz<1)};
   }
-  function derivative(s,z,c){const f=forces(s,z,c),ax=f.Fx/mass,ay=f.Fy/mass;return {x:z.u*Math.cos(z.psi)-z.v*Math.sin(z.psi),y:z.u*Math.sin(z.psi)+z.v*Math.cos(z.psi),psi:z.r,u:z.r*z.v+ax,v:-z.r*z.u+ay,r:f.moment/inertia,ax:(ax-z.ax)/.15,ay:(ay-z.ay)/.15}}
+  function derivative(s,z,c){const f=forces(s,z,c),ax=f.Fx/mass,ay=f.Fy/mass;return {x:z.u*Math.cos(z.psi)-z.v*Math.sin(z.psi),y:z.u*Math.sin(z.psi)+z.v*Math.cos(z.psi),psi:z.r,u:z.r*z.v+ax,v:-z.r*z.u+ay,r:f.moment/inertia,ax:(ax-z.ax)/.15,ay:(ay-z.ay)/.15,frontBrakeForce:(f.frontBrakeTarget-(z.frontBrakeForce??0))/.15,rearDriveForce:(f.rearDriveTarget-(z.rearDriveForce??0))/.15}}
   const plus=(z,d,h)=>Object.fromEntries(Object.keys(z).map(k=>[k,z[k]+d[k]*h]));
   // A prescribed steering manoeuvre, evaluated at every RK4 stage. No drift controller.
   function steeringAt(s,t,program){
@@ -52,7 +54,7 @@
   }
   function feedbackDerivative(s,z,c,t,driver){
     const f=forces({...s,steer:z.driverSteer},z,c),control=driverControl(z,f,t,driver),ax=f.Fx/mass,ay=f.Fy/mass;
-    return {x:z.u*Math.cos(z.psi)-z.v*Math.sin(z.psi),y:z.u*Math.sin(z.psi)+z.v*Math.cos(z.psi),psi:z.r,u:z.r*z.v+ax,v:-z.r*z.u+ay,r:f.moment/inertia,ax:(ax-z.ax)/.15,ay:(ay-z.ay)/.15,driverSteer:control.steerRate};
+    return {x:z.u*Math.cos(z.psi)-z.v*Math.sin(z.psi),y:z.u*Math.sin(z.psi)+z.v*Math.cos(z.psi),psi:z.r,u:z.r*z.v+ax,v:-z.r*z.u+ay,r:f.moment/inertia,ax:(ax-z.ax)/.15,ay:(ay-z.ay)/.15,frontBrakeForce:(f.frontBrakeTarget-(z.frontBrakeForce??0))/.15,rearDriveForce:(f.rearDriveTarget-(z.rearDriveForce??0))/.15,driverSteer:control.steerRate};
   }
   function feedbackStep(s,z,c,h,t,driver){const k1=feedbackDerivative(s,z,c,t,driver),k2=feedbackDerivative(s,plus(z,k1,h/2),c,t+h/2,driver),k3=feedbackDerivative(s,plus(z,k2,h/2),c,t+h/2,driver),k4=feedbackDerivative(s,plus(z,k3,h),c,t+h,driver);return Object.fromEntries(Object.keys(z).map(k=>[k,z[k]+h*(k1[k]+2*k2[k]+2*k3[k]+k4[k])/6]))}
   function simulate(s,inputs={},duration=3,dt=1/120,options={}){

@@ -1,6 +1,6 @@
 (function(root){'use strict';
 const rad=Math.PI/180,deg=180/Math.PI,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const defaults={ack:0,rackSide:1,steeringArm:100,tyreWidth:235,tyreAspect:45,rimDiameter:17,tyrePressure:2.2,tyreCompliance:1,steer:-28,beta:-32,speed:65,yaw:18,camber:-4,caster:5.5,kpi:10,scrub:25,rc:60,trail:35,damping:7,mu:1.05,wheelbase:2700,track:1600,springRate:8,motionRatio:.95,frontBarRate:15,wheelTravelLF:0,wheelTravelRF:0,bumpToe:0,reboundToe:0,bumpFromRoll:1};
+const defaults={frontAntiDive:0,rearAntiSquat:0,longitudinalG:0,frontBrakeBias:65,rearWheelRate:55,ack:0,rackSide:1,steeringArm:100,tyreWidth:235,tyreAspect:45,rimDiameter:17,tyrePressure:2.2,tyreCompliance:1,steer:-28,beta:-32,speed:65,yaw:18,camber:-4,caster:5.5,kpi:10,scrub:25,rc:60,trail:35,damping:7,mu:1.05,wheelbase:2700,track:1600,springRate:8,motionRatio:.95,frontBarRate:15,wheelTravelLF:0,wheelTravelRF:0,bumpToe:0,reboundToe:0,bumpFromRoll:1};
 const dot=(a,b)=>a.reduce((v,x,i)=>v+x*b[i],0),cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],add=(a,b)=>a.map((v,i)=>v+b[i]),sub=(a,b)=>a.map((v,i)=>v-b[i]),mul=(a,k)=>a.map(v=>v*k),norm=a=>mul(a,1/Math.hypot(...a));
 function rotate(v,k,q){return add(add(mul(v,Math.cos(q)),mul(cross(k,v),Math.sin(q))),mul(k,dot(k,v)*(1-Math.cos(q))))}
 // Ideal steering-arm convergence model. Offset is transverse, positive outward.
@@ -23,10 +23,28 @@ function suspensionRates(s){const springNmm=(s.springRate??8)*9.80665,motionRati
 // Fitted toe curve: positive toe is toe-in on either wheel, independent of steering sign.
 // Inputs are toe changes measured at +25 mm bump and -25 mm rebound, not hardpoints.
 function bumpToeAt(s,z){const a=s.bumpToe??0,b=s.reboundToe??0;return (a-b)*z/50+(a+b)*z*z/1250}
-function bumpKinematics(s,roll){return [1,-1].map((side,i)=>{const manualTravel=(i?s.wheelTravelRF:s.wheelTravelLF)??0,rollTravel=(s.bumpFromRoll??1)?-side*s.track/2*Math.tan(roll):0,requestedTravel=manualTravel+rollTravel,travel=clamp(requestedTravel,-75,75),toeChange=bumpToeAt(s,travel);return {manualTravel,rollTravel,requestedTravel,travel,toeChange,bumpDelta:-side*toeChange,toeMm:2*tyreRadius(s)*Math.sin(toeChange*rad),travelLimited:Math.abs(requestedTravel)>75}})}
+function pitchResponse(s,motion=null){
+ // Lumped quasi-static model: anti geometry redistributes suspension reaction,
+ // never multiplies the whole-vehicle longitudinal load transfer or tyre grip.
+ const m=1250,g=9.81,h=.52,L=s.wheelbase/1000,front=.55,ax=motion?.ax??(s.longitudinalG??0)*g;
+ const transfer=m*ax*h/L,limitedTransfer=clamp(transfer,-m*g*(1-front),m*g*front);
+ // Input anti-dive is normalised at 65% front braking; keep geometry fixed as bias changes.
+ const frontRatio=(s.frontAntiDive??0)/100*h/(L*.65),rearRatio=(s.rearAntiSquat??0)/100*h/L;
+ const frontBrakeForce=Math.max(0,motion?.frontBrakeForce??(-Math.min(ax,0)*m*(s.frontBrakeBias??65)/100));
+ const rearDriveForce=Math.max(0,motion?.rearDriveForce??(Math.max(ax,0)*m));
+ const frontGeometry=frontBrakeForce*frontRatio,rearGeometry=rearDriveForce*rearRatio;
+ const frontElastic=-limitedTransfer-frontGeometry,rearElastic=limitedTransfer-rearGeometry;
+ const frontRate=suspensionRates(s).wheelNmm,rearRate=s.rearWheelRate??55;
+ const frontTravel=frontElastic/(2*frontRate),rearTravel=rearElastic/(2*rearRate);
+ return {ax,transfer,limitedTransfer,frontLoad:m*g*front-limitedTransfer,rearLoad:m*g*(1-front)+limitedTransfer,
+  frontBrakeForce,rearDriveForce,frontRatio,rearRatio,frontGeometry,rearGeometry,frontElastic,rearElastic,frontRate,rearRate,frontTravel,rearTravel,
+  pitch:Math.atan2(rearTravel-frontTravel,s.wheelbase)*deg,frontEffective:ax<-.01?frontGeometry/(-transfer)*100:null,rearEffective:ax>.01?rearGeometry/transfer*100:null,
+  loadLimited:Math.abs(transfer-limitedTransfer)>.01,travelLimited:Math.max(Math.abs(frontTravel),Math.abs(rearTravel))>75};
+}
+function bumpKinematics(s,roll,pitchTravel=0){return [1,-1].map((side,i)=>{const manualTravel=(i?s.wheelTravelRF:s.wheelTravelLF)??0,rollTravel=(s.bumpFromRoll??1)?-side*s.track/2*Math.tan(roll):0,requestedTravel=manualTravel+rollTravel+pitchTravel,travel=clamp(requestedTravel,-75,75),toeChange=bumpToeAt(s,travel);return {manualTravel,rollTravel,pitchTravel,requestedTravel,travel,toeChange,bumpDelta:-side*toeChange,toeMm:2*tyreRadius(s)*Math.sin(toeChange*rad),travelLimited:Math.abs(requestedTravel)>75}})}
 function calculate(s,shock=0,motion=null){
  const rates=suspensionRates(s),m=1250,front=.55,cg=.52,K=rates.totalRoll,L=s.wheelbase/1000,T=s.track/1000,a=L*(1-front),u=s.speed/3.6*Math.cos(s.beta*rad),v=s.speed/3.6*Math.sin(s.beta*rad),r=s.yaw*rad,ay=motion?.ay??u*r,rc=s.rc/1000,rollAxis=front*rc+(1-front)*.08;
- const roll=m*ay*(cg-rollAxis)/K,geom=m*front*ay*rc/T,elastic=rates.frontRoll*roll/T,transfer=geom+elastic,base=clamp(m*9.81*front-m*(motion?.ax??0)*cg/L,0,m*9.81)/2,bump=bumpKinematics(s,roll),baseDeltas=angles(s),deltas=baseDeltas.map((d,i)=>d+bump[i].bumpDelta),ap=angles({...s,steer:s.steer+.001}),am=angles({...s,steer:s.steer-.001});
+ const pitch=pitchResponse(s,motion),roll=m*ay*(cg-rollAxis)/K,geom=m*front*ay*rc/T,elastic=rates.frontRoll*roll/T,transfer=geom+elastic,base=pitch.frontLoad/2,bump=bumpKinematics(s,roll,pitch.frontTravel),baseDeltas=angles(s),deltas=baseDeltas.map((d,i)=>d+bump[i].bumpDelta),ap=angles({...s,steer:s.steer+.001}),am=angles({...s,steer:s.steer-.001});
  const wheels=[1,-1].map((side,i)=>{
   const delta=deltas[i]*rad,y=side*T/2,vx=u-r*y,vy=v+r*a,direction=Math.atan2(vy,vx),alpha=delta-direction,Fz=clamp(base-side*transfer,0,base*2),g=wheelGeometry(s,side,delta,roll);
   const capacity=s.mu*3372*Math.pow(Fz/3372,.9)/(1+Math.pow(g.camber/18,2)),effectiveAlpha=alpha+side*g.camber*rad*.08;
@@ -37,9 +55,20 @@ function calculate(s,shock=0,motion=null){
   return {side,name:i?'RF':'LF',baseDelta:baseDeltas[i],...bump[i],delta:deltas[i],direction:direction*deg,alpha:alpha*deg,Fz,Fy,Fx,bodyFx,bodyFy,yawMoment,pathLong,pathSide,capacity,tp,ratio,mt:mt*ratio,mp:mp*ratio,mj:mj*ratio,mx:mx*ratio,torque:(mt+mp+mj+mx)*ratio,...g};
  });
  const sum=k=>wheels.reduce((v,w)=>v+w[k],0),torque=sum('torque'),weightedSlip=wheels.reduce((v,w)=>v+Math.abs(w.alpha)*w.Fz,0)/(2*base);
- return {wheels,rates,u,v,r,ay,roll:roll*deg,geom,elastic,transfer,torque,trail:s.trail,weightedSlip,mt:sum('mt'),mp:sum('mp'),mj:sum('mj'),mx:sum('mx'),kick:wheels[1].scrubLever*wheels[1].ratio*1000,lift:Math.abs(transfer)>=base,overDemand:Math.abs(ay)>s.mu*9.81};
+ return {wheels,rates,pitch,u,v,r,ay,roll:roll*deg,geom,elastic,transfer,torque,trail:s.trail,weightedSlip,mt:sum('mt'),mp:sum('mp'),mj:sum('mj'),mx:sum('mx'),kick:wheels[1].scrubLever*wheels[1].ratio*1000,lift:Math.abs(transfer)>=base,overDemand:Math.abs(ay)>s.mu*9.81};
 }
 
+// Front-view equivalent force lines pass through a centred RC. This is a
+// diagnostic estimate, not a solved heave/roll equilibrium or hardpoint model.
+function jackingEstimate(s,bodyForces){
+ const slope=2*s.rc/s.track,vertical=bodyForces.map((fy,i)=>(i?1:-1)*fy*slope),net=vertical[0]+vertical[1];
+ return {slope,vertical,net,heave:net/(2*suspensionRates(s).wheelNmm)};
+}
+function rollAnalysis(s,result=null){
+ const r=result??calculate(s),T=s.track/1000,rearGeom=1250*.45*r.ay*.08/T,rearElastic=r.rates.rearRoll*r.roll*rad/T;
+ return {result:r,rearGeom,rearElastic,total:r.geom+r.elastic+rearGeom+rearElastic,
+  jacking:jackingEstimate(s,r.wheels.map(w=>w.bodyFy))};
+}
 function tyreRadius(s){return ((s.rimDiameter??17)*25.4+2*(s.tyreWidth??235)*(s.tyreAspect??45)/100)/2}
 const patchBasisCache=new Map();
 // Educational elastic foundation: q = K * max(0, z - x²/(2R) - y²/(2Rc) + tilt*y).
@@ -64,5 +93,5 @@ function contactPatch(s,w){
 }
 function contactPressure(p,x,y){if(Math.abs(y)>p.half)return 0;return p.K*Math.max(0,p.z-x*x/(2*p.R)-y*y/(2*p.Rc)+p.tilt*y)}
 
-root.DriftModel={defaults,angles,suspensionRates,bumpToeAt,bumpKinematics,calculate,wheelGeometry,tyreRadius,contactPatch,contactPressure,rad,deg,clamp,rotate};if(typeof module!=='undefined')module.exports=root.DriftModel;
+root.DriftModel={defaults,angles,pitchResponse,rollAnalysis,jackingEstimate,suspensionRates,bumpToeAt,bumpKinematics,calculate,wheelGeometry,tyreRadius,contactPatch,contactPressure,rad,deg,clamp,rotate};if(typeof module!=='undefined')module.exports=root.DriftModel;
 })(typeof window==='undefined'?globalThis:window);

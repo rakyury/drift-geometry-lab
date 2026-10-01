@@ -2,6 +2,11 @@
 (() => {
   'use strict';
   const lessons = {
+    frontAntiDive: ['Продольная геометрия', 'anti', 'Геометрическая реакция передней подвески против клевка при торможении.', 'Уменьшает дополнительное сжатие передних пружин, сохраняя перенос нагрузки на переднюю ось. Через Pitch travel меняет рабочую точку на кривой Bump steer.', 'Откройте подробную схему и выберите Braking. Сравните 0%, 50%, 100%. Значение нормировано при Front brake bias 65%; при другом bias эффективная доля отличается.', 'anti', [0,50,100]],
+    rearAntiSquat: ['Продольная геометрия', 'anti', 'Геометрическая реакция задней подвески против приседания под тягой.', 'Меняет ход задних пружин и Body pitch. Задняя ось всё равно догружается; уменьшение приседания не равнозначно уменьшению или увеличению сцепления.', 'Откройте подробную схему и выберите Acceleration. При 100% задняя подвеска не получает дополнительного сжатия в эталонном опыте; передняя всё ещё может подниматься.', 'anti', [0,50,100]],
+    longitudinalG: ['Продольная геометрия', 'anti', 'Заданное продольное ускорение: минус при торможении, плюс под тягой.', 'Задаёт перенос веса, Pitch travel и продольный наклон кузова. В динамическом прогоне Ax получается из сил, независимо от этого ползунка.', 'Сравните −0,8 g и +0,5 g. Anti-dive действует с тормозной силой спереди, Anti-squat — с тягой сзади. Это квазистатический опыт, не колебание на амортизаторах.', 'anti', [-.8,0,.5]],
+    frontBrakeBias: ['Продольная геометрия', 'anti', 'Доля тормозной силы передней оси в заданном продольном опыте.', 'При прежнем замедлении сохраняет общий перенос нагрузки, но меняет геометрическую реакцию Anti-dive. Значение Front anti-dive нормировано при 65% bias.', 'Выберите торможение и ненулевой Front anti-dive. Уменьшайте bias: эффективный Anti-dive снизится. В Free response отдельный Front brake bias относится к запросам сил динамического прогона.', 'anti', [40,65,80]],
+    rearWheelRate: ['Продольная геометрия', 'anti', 'Эквивалентная жёсткость на одном заднем колесе.', 'При том же переносе нагрузки более жёсткая задняя ось меньше сжимается или разжимается в продольном опыте. Это не настройка амортизатора.', 'Сравните 35, 55 и 85 N/mm. Значение влияет на Pitch travel; задняя жёсткость на крен остаётся отдельным допущением модели.', 'anti', [35,55,85]],
     caster: ['Ось поворота', 'side', 'Наклон оси поворота назад, если смотреть на машину сбоку.', 'На вывороте меняет Camber левого и правого колеса по-разному. При неизменном положении ступицы увеличивает Mechanical trail, а вместе с ним меняется момент самоповорота.', 'Сравните 4°, 5,5° и 6,5° на одном Steering angle. Больше Caster не означает, что любому колесу всегда нужно больше отрицательного Camber: проверяйте оба колеса и весь диапазон выворота.', 'suspension', [4, 5.5, 6.5]],
     kpi: ['Ось поворота', 'front', 'Наклон оси поворота внутрь машины при взгляде спереди.', 'При повороте вокруг наклонной оси меняются Camber и высота колеса. Поэтому меняются распределение давления в пятне и геометрический момент на руле.', 'Сравните 12°, 10° и 8°. Меньший KPI обычно уменьшает положительную добавку Camber на вывороте; итог зависит также от Caster, Static camber и Body roll.', 'suspension', [12, 10, 8]],
     trail: ['Ось поворота', 'side', 'Расстояние по дороге от центра пятна до оси поворота — вдоль машины.', 'Боковая сила действует через это плечо и создаёт момент на руле. Положительный Trail помогает колесу ориентироваться по движению, но итоговый момент зависит и от шины, выворота и других плеч.', 'Увеличение Trail отдельно от Caster позволяет менять самоповорот без той же добавки Camber. Здесь это условное независимое смещение ступицы; реализуемость зависит от кулака.', 'suspension', [20, 35, 50]],
@@ -18,7 +23,8 @@
     yaw: ['Движение кузова', 'motion', 'Скорость разворота кузова, если смотреть сверху.', 'Измеряется в °/с. Меняет локальные скорости колёс и боковое ускорение. Через ускорение меняются нагрузки и Body roll.', 'Yaw — вращение вокруг вертикальной оси. Body roll — наклон кузова вбок вокруг продольной оси. Например, r = 20°/с означает поворот направления кузова на 20° за одну секунду при постоянном r.', 'course', [-20, 0, 20]],
     speed: ['Движение кузова', 'motion', 'Скорость перемещения машины по дороге.', 'При сохранении Yaw rate и Drift angle меняет боковое ускорение, перенос нагрузки и крен. При r = 0 ускорение в этой модели равно нулю.', 'Движение здесь задано пользователем. Изменение сил не перестраивает траекторию автоматически: для этого нужна полноценная динамическая модель всей машины.', 'course', [30, 65, 90]],
     roll: ['Движение кузова', 'roll', 'Body roll φ — наклон кузова вбок. Это результат расчёта, а не Yaw rate.', 'Боковое ускорение наклоняет кузов, а пружины и стабилизаторы сопротивляются. Наклон меняет Camber к дороге и ход левого и правого колеса.', 'На этом экране меняйте Front spring rate: при том же ускорении большая общая жёсткость уменьшает крен. Для сравнения без крена задайте Yaw rate 0°/с.', 'suspension', [6, 8, 12]],
-    rc: ['Подвеска', 'roll', 'Высота переднего геометрического центра крена над дорогой.', 'Меняет плечо боковой силы относительно оси крена и геометрическую часть переноса нагрузки. Поднятие Roll center может уменьшить крен, но не означает автоматического роста сцепления.', 'В настоящем MacPherson Roll center получается из геометрии стойки и рычага. Здесь высота задана отдельно; схема показывает принцип, а не монтажные координаты.', 'suspension', [20, 60, 100]],
+    rc: ['Подвеска', 'jacking', 'Высота переднего Roll center над дорогой: точка схемы передачи боковых сил.', 'Более высокий RC уменьшает плечо крена, увеличивает геометрическую часть переноса и вертикальные реакции Jacking. Меньший крен не означает меньший общий перенос веса.', 'Сравните 0, 60, 150 и 200 mm. Посмотрите отдельно Body roll, нагрузки колёс и Net jacking; реальный подъём требует геометрии подвески.', 'roll', [0,60,150,200]],
+    rollJacking: ['Подвеска', 'jacking', 'Вертикальная реакция при передаче боковых сил через наклонные силовые линии подвески.', 'На одной стороне реакция может поднимать кузов, на другой — опускать. Сумма зависит от направлений и разницы боковых сил обоих колёс; это не Steering jacking от Caster / KPI.', 'Ползунок меняет Front roll center. Откройте подробную схему: стрелки показывают реакции LF, RF и их сумму. Подъём дан только как отдельная оценка, без коррекции траектории.', 'roll', [0,60,150,200]],
     springRate: ['Подвеска', 'roll', 'Жёсткость одной передней пружины: сила на каждый миллиметр сжатия.', 'Через Motion ratio задаёт Wheel rate и переднюю жёсткость на крен. Более жёсткий перед уменьшает общий крен, но увеличивает переднюю долю упругого переноса нагрузки.', 'Жёсткость — не демпфирование. Амортизаторы и отбойники отдельно не рассчитаны. При смене пружин модель предполагает сохранение исходной высоты кузова.', 'bump', [6, 8, 12]],
     motionRatio: ['Подвеска', 'ratio', 'Ход пружины, поделённый на ход колеса.', 'Wheel rate = Spring rate × Motion ratio². Если пружина сжимается на 20 мм при ходе колеса 25 мм, Motion ratio = 0,8.', 'Схема показывает условный ход колеса 25 мм и соответствующий ход пружины. Введённый коэффициент уже учитывает угол установки; повторно наклон не применяется.', 'bump', [0.75, 0.95, 1]],
     frontBarRate: ['Подвеска', 'roll', 'Добавка переднего стабилизатора к жёсткости оси на крен.', 'Сопротивляется разности ходов колёс. В модели увеличивает Front roll stiffness, уменьшает крен и меняет передний упругий перенос нагрузки.', 'Значение уже приведено к кузову в kN·m/rad, это не паспортная жёсткость торсиона. Синхронный ход обоих колёс и его силы здесь отдельно не моделируются.', 'bump', [0, 15, 30]],
@@ -36,9 +42,9 @@
     wheelbase: ['Размеры машины', 'dimensions', 'Расстояние между передней и задней осями.', 'При заданном положении центра масс меняет продольное плечо передних колёс. Через Yaw rate меняются их локальные скорости и Slip angle.', 'При нулевом Yaw rate этот вклад в локальную скорость исчезает. Распределение массы здесь фиксировано: 55% на переднюю ось.', 'course', [2500, 2700, 2900]],
     track: ['Размеры машины', 'dimensions', 'Расстояние между центрами передних колёс.', 'Меняет поперечные плечи, разницу скоростей в повороте, ход колёс от крена и жёсткость передних пружин на крен.', 'Front track width и Scrub radius — разные размеры. Здесь колея меняется независимо; на реальной машине изменение вылета диска может менять оба параметра.', 'bump', [1500, 1600, 1750]],
   };
-  const extras = {slip:['steer','Steering angle δ',-55,55,.5,'°'],dynamicAck:['ack','Ackermann offset',-9,9,1.5,'mm'],rackSide:['rackSide','Steering arm position',-1,1,2,''],bumpFromRoll:['bumpFromRoll','Body roll → Bump steer',0,1,1,''],roll:['springRate','Front spring rate',4,20,.5,'kgf/mm']};
+  const extras = {rollJacking:['rc','Front roll center',-50,200,5,'mm'],slip:['steer','Steering angle δ',-55,55,.5,'°'],dynamicAck:['ack','Ackermann offset',-9,9,1.5,'mm'],rackSide:['rackSide','Steering arm position',-1,1,2,''],bumpFromRoll:['bumpFromRoll','Body roll → Bump steer',0,1,1,''],roll:['springRate','Front spring rate',4,20,.5,'kgf/mm']};
   const def = k => extras[k] || definitions.find(d=>d[0]===k);
-  const name = k => k==='slip'?'Slip angle α':k==='dynamicAck'?'Dynamic Ackermann':k==='roll'?'Body roll φ':def(k)[1];
+  const name = k => k==='rollJacking'?'Roll jacking':k==='slip'?'Slip angle α':k==='dynamicAck'?'Dynamic Ackermann':k==='roll'?'Body roll φ':def(k)[1];
   const keys=Object.keys(lessons), groups=[...new Set(keys.map(k=>lessons[k][0]))];
   let selected='slip', learning=true, effectView=false, reference={...state}, refLock=lockTrail, referenceResult=M.calculate(reference);
   const L='#c6f36b',C='#65d8ef',O='#ffa66b',G='#7f94a3',P='#d5afff';
@@ -204,6 +210,8 @@
     return [svg(a,'Суммарный момент на рулевом механизме при удерживаемом угле'),'Вид сверху · момент приведён к δ; это не усилие на ободе руля'];
   }
   function effectPicture(k,s,r,ref,rr){
+    if(lessons[k][1]==='jacking')return [DriftRoll.visual(s,ref),DriftRoll.explanation(s)];
+    if(lessons[k][1]==='anti')return [DriftAnti.visual(s,ref),DriftAnti.explanation(s)];
     if(k==='slip')return forceDiagram(s,r,ref,rr,'Slip angle → Lateral force');
     if(k==='dynamicAck')return steeringDiagram(k,s,r,ref,rr);
     if(['caster','kpi'].includes(k))return camberDiagram(s,r,ref,rr);
@@ -217,6 +225,8 @@
   }
   function picture(k,s,r,ref,rr){
     switch(lessons[k][1]){
+      case 'jacking':return [DriftRoll.visual(s,ref),DriftRoll.explanation(s)];
+      case 'anti':return [DriftAnti.visual(s,ref),DriftAnti.explanation(s)];
       case 'slip':return slipDiagram(s,r,ref,rr);
       case 'dynamic':return dynamicAckDiagram(s,ref);
       case 'side':return sideDiagram(k,s,ref);
@@ -236,6 +246,8 @@
   }
   function metricsFor(k,s,r){
     const wheels=(prop,label,unit,n=1)=>r.wheels.map(w=>[`${label} ${w.name}`,w[prop],unit,n]);
+    if(lessons[k][1]==='jacking')return [['Body roll',r.roll,'°',2],['Net jacking estimate',M.rollAnalysis(s,r).jacking.net/1000,'kN',2]];
+    if(lessons[k][1]==='anti')return [['Front pitch travel',r.pitch.frontTravel,'mm',1],['Rear pitch travel',r.pitch.rearTravel,'mm',1]];
     if(k==='dynamicAck')return M.angles(s).map((v,i)=>['Base angle '+(i?'RF':'LF'),v,'°',2]);
     if(['caster','kpi','camber'].includes(k))return wheels('camber','Camber','°');
     if(['ack','steer','rackSide','steeringArm'].includes(k))return wheels('delta','Steering angle','°');
@@ -278,7 +290,7 @@
     $('ex-lock').checked=lockTrail;$('ex-steer').value=state.steer;$('ex-steer-value').textContent=sgn(state.steer)+'°';
     $('explorer').querySelectorAll('[data-ex-value]').forEach(b=>{b.classList.toggle('active',Math.abs(+b.dataset.exValue-v)<1e-8);b.setAttribute('aria-pressed',Math.abs(+b.dataset.exValue-v)<1e-8)});
     $('ex-minus').disabled=v<=d[2];$('ex-plus').disabled=v>=d[3];
-    $('ex-state').innerHTML=`<span>Условия сравнения</span><p>Steering angle ${sgn(state.steer)}°<br>Drift angle ${sgn(state.beta)}° · Speed ${num(state.speed,0)} km/h<br>Yaw rate ${sgn(state.yaw)}°/s · Body roll ${sgn(r.roll,2)}°<br>Static camber ${sgn(state.camber)}° · Caster ${num(state.caster)}°<br>KPI ${num(state.kpi)}° · Trail ${num(state.trail)} mm<br>Wheel input LF / RF ${sgn(state.wheelTravelLF,0)} / ${sgn(state.wheelTravelRF,0)} mm</p>`;
+    $('ex-state').innerHTML=`<span>Условия сравнения</span><p>Longitudinal acceleration ${sgn(state.longitudinalG??0,2)} g<br>Steering angle ${sgn(state.steer)}°<br>Drift angle ${sgn(state.beta)}° · Speed ${num(state.speed,0)} km/h<br>Yaw rate ${sgn(state.yaw)}°/s · Body roll ${sgn(r.roll,2)}°<br>Static camber ${sgn(state.camber)}° · Caster ${num(state.caster)}°<br>KPI ${num(state.kpi)}° · Trail ${num(state.trail)} mm<br>Wheel input LF / RF ${sgn(state.wheelTravelLF,0)} / ${sgn(state.wheelTravelRF,0)} mm</p>`;
     const dialogState=$('ex-dialog-body').querySelector('.ex-state');if($('ex-dialog').open&&dialogState)dialogState.innerHTML=$('ex-state').innerHTML;
   }
   function captureReference(){reference={...state};referenceResult=M.calculate(reference);refLock=lockTrail}
@@ -289,7 +301,7 @@
     free=false;steerVelocity=0;running=!learn;if(scene==='transition')scene='custom';if(detail)view=detail;
     if(learn)setupParam();sync();render();window.scrollTo(0,0);
   }
-  function openDetail(){if($('ex-dialog').open)$('ex-dialog').close();setMode(false,lessons[selected][5]);}
+  function openDetail(){if(lessons[selected][1]==='jacking'){if($('ex-dialog').open)$('ex-dialog').close();document.dispatchEvent(new CustomEvent('open-roll'));return}if(lessons[selected][1]==='anti'){if($('ex-dialog').open)$('ex-dialog').close();document.dispatchEvent(new CustomEvent('open-anti'));return}if($('ex-dialog').open)$('ex-dialog').close();setMode(false,lessons[selected][5]);}
   const renderLab=render;
   render=function(){if(learning){result=M.calculate(state);renderExplorer()}else renderLab()};
   $('param-select').onchange=e=>select(e.target.value);
@@ -316,5 +328,6 @@
   $('lessons').insertAdjacentHTML('beforeend','<article class="lesson"><div class="index">/ 07</div><h3>Dynamic Ackermann</h3><p>Одна настройка тяги может давать разную разницу углов колёс на малом и большом вывороте. Поэтому Zero в одной точке реальной кинематики ещё не означает параллельные колёса на всём диапазоне.</p><p class="small">В дрифте это меняет угол увода и силу ведомого колеса. Bump steer — отдельная добавка от хода подвески.</p><button id="open-dynamic-ack">Посмотреть зависимость от Steering angle</button></article>');
   $('open-dynamic-ack').onclick=()=>{select('dynamicAck');setMode(true)};
   $('method').insertAdjacentHTML('beforeend',`<p><strong>Dynamic Ackermann.</strong> Здесь термин обозначает зависимость разницы углов от выворота. График строится из базовой функции Ackermann: Δδ = |δ inner| − |δ outer|; inner выбирается по знаку Steering angle. Показан модуль центрального угла 0…55°; левая и правая ветви симметричны в этой модели. Внешняя разница от Bump steer исключена из графика и Base angle LF/RF, но входит в итоговые углы схемы «Что меняется». Offset — вход в миллиметрах, Δδ — результат в градусах; проценты не используются. Подвижные координаты рейки и тяг не решаются, поэтому при фиксированном Offset эта формула не воспроизводит смену Reverse / Positive по мере выворота. Это ограничение модели, а не общее свойство подвески. <a href="https://race.software/academy/suspension-designer-library/ackermann-at-50mm-rack-travel/" target="_blank" rel="noopener">RACE: Ackermann меняется с углом руления</a>. <a href="https://www.wisefab.com/amfile/file/download/file/12/product/6422/" target="_blank" rel="noopener">Wisefab: нелинейность и возможная смена знака в реальной геометрии</a>.</p>`);
+  $('method').insertAdjacentHTML('beforeend',DriftAnti.help+DriftRoll.help);
   view='course';setMode(true);
 })();

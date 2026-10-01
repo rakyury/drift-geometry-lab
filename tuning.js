@@ -15,10 +15,11 @@
   const ar=(x,y,xx,yy,c)=>{const a=Math.atan2(yy-y,xx-x);return ln(x,y,xx,yy,c,3)+`<path d="M${xx-8*Math.cos(a-.5)} ${yy-8*Math.sin(a-.5)}L${xx} ${yy}L${xx-8*Math.cos(a+.5)} ${yy-8*Math.sin(a+.5)}" fill="none" stroke="${c}" stroke-width="3"/>`};
   const role=i=>T.leading(state)===null?'':T.leading(state)===i?'Leading':'Trailing';
   const field=(key,label,min,max,step,unit)=>`<label class="tn-field"><span>${label} <output id="tn-${key}-out"></output></span><div><input id="tn-${key}" data-tn-key="${key}" type="range" min="${min}" max="${max}" step="${step}" aria-label="${label}"><input id="tn-${key}-num" data-tn-key="${key}" type="number" min="${min}" max="${max}" step="${step}" aria-label="${label}: точно"><small>${unit}</small></div></label>`;
+  const rollField=(...args)=>field(...args).replaceAll('id="tn-','id="rj-');
   document.querySelector('.mode-switch').insertAdjacentHTML('afterbegin','<button id="tuning-mode" aria-pressed="false">Настроить</button>');
   document.querySelector('main').insertAdjacentHTML('afterbegin',`<section id="tuning-lab" hidden aria-label="Связанные настройки">
     <div class="tn-heading"><div><p class="eyebrow">НАСТРОЙКА → ИЗМЕНЕНИЕ → РЕЗУЛЬТАТ</p><h1 id="tn-title">Caster / Camber</h1></div><button id="tn-help">Как работает</button></div>
-    <div class="tn-tabs"><button data-tn-task="camber" aria-pressed="true">Caster / Camber</button><button data-tn-task="ack" aria-pressed="false">Ackermann / Path</button><button data-tn-task="links" aria-pressed="false">Связи</button></div>
+    <div class="tn-tabs"><button data-tn-task="camber" aria-pressed="true">Caster / Camber</button><button data-tn-task="ack" aria-pressed="false">Ackermann / Path</button><button data-tn-task="links" aria-pressed="false">Связи</button><button data-tn-task="anti" aria-pressed="false">Pitch / Anti</button><button data-tn-task="roll" aria-pressed="false">Roll / Jacking</button></div>
     <div class="tn-workspace"><div class="tn-stage">
       <div class="tn-stage-top"><strong id="tn-stage-caption"></strong><button id="tn-view" hidden>Передняя ось</button></div>
       <div id="tn-contact-switch" class="tn-contact-switch" aria-label="Contact comparison"><button id="tn-contact-equal" aria-pressed="true">Camber only <small>Одинаковая нагрузка</small></button><button id="tn-contact-load" aria-pressed="false">Camber + Load <small>С переносом веса</small></button></div>
@@ -62,8 +63,43 @@
         <div class="tn-match-box"><label for="tn-match-metric">Same effect</label><select id="tn-match-metric"><option value="moment">Trailing yaw moment</option><option value="torque">Steering torque</option><option value="force">Trailing lateral force</option></select><p id="tn-match-result" role="status"></p><button id="tn-match-apply">Применить ближайший Ackermann</button><p class="tn-small">Подбор по одному показателю при одинаковом Leading angle. Совпадение траектории или Self-steering не гарантируется.</p></div>
         <button id="tn-link-release">Показать Self-steering в симуляторе</button>
       </div>
+      <div id="tn-anti-controls" hidden>
+        <div class="tn-presets anti-presets"><button data-anti-g="-0.8">Braking −0,8 g</button><button data-anti-g="0">Coasting 0 g</button><button data-anti-g="0.5">Acceleration +0,5 g</button></div>
+        ${field('longitudinalG','Longitudinal acceleration',-1,1,.05,'g')}
+        ${field('frontAntiDive','Front anti-dive',0,150,5,'%')}
+        <p class="tn-small">Нормировано при Front brake bias 65%. Эффективное значение показано ниже.</p>
+        ${field('rearAntiSquat','Rear anti-squat',0,150,5,'%')}
+        ${field('frontBrakeBias','Front brake bias',0,100,5,'%')}
+        ${field('rearWheelRate','Rear wheel rate',10,150,5,'N/mm')}
+        <p class="tn-small">Оранжевый пунктир — 0% обоих Anti при тех же ускорении и жёсткости. Сравнение не меняет исходную загрузку осей.</p>
+        <details class="anti-bump-controls"><summary>Front stiffness и связь с Bump steer</summary>
+          ${field('springRate','Front spring rate',4,20,.5,'kgf/mm')}
+          ${field('motionRatio','Motion ratio',.65,1.05,.01,'×')}
+          ${field('bumpToe','Bump toe (+25 mm)',-1,1,.025,'°')}
+          ${field('reboundToe','Rebound toe (−25 mm)',-1,1,.025,'°')}
+          <p class="tn-small">Нулевая кривая не даёт подруливания. Введите измеренные значения. Rear wheel rate здесь влияет на Pitch travel, но не заменяет настройку жёсткости задней оси на крен.</p>
+        </details>
+      </div>
+      <div id="tn-roll-controls" hidden>
+        ${rollField('rc','Front roll center',-50,200,5,'mm')}
+        <div class="tn-presets roll-presets">${[0,60,150,200].map(v=>`<button data-roll-rc="${v}">${v} mm${v>=150?' · High':''}</button>`).join('')}</div>
+        <p class="tn-small">Высоты для сравнения. Оранжевый пунктир — Body roll при RC 0 mm и тех же условиях. Голубые линии — условные силовые линии, не реальные рычаги.</p>
+        <button id="tn-roll-mirror">Зеркальный поворот</button>
+        ${rollField('springRate','Front spring rate',4,20,.5,'kgf/mm')}
+        ${rollField('frontBarRate','Front anti-roll bar',0,50,1,'kN·m/rad')}
+        <details class="anti-bump-controls"><summary>Силы и условия опыта</summary>
+          ${rollField('steer','Steering angle',-55,55,.5,'°')}
+          ${rollField('beta','Drift angle',-55,55,1,'°')}
+          ${rollField('speed','Speed',5,110,1,'km/h')}
+          ${rollField('yaw','Yaw rate',-40,40,1,'°/s')}
+          <p class="tn-small">Ay = продольная скорость × Yaw rate. Эти условия задают мгновенное состояние; рассчитанные силы шин не обязаны поддерживать его как установившийся поворот.</p>
+        </details>
+        <p class="tn-notice">RC уже влияет на Body roll, нагрузки, Camber и Bump steer. Jacking — отдельная оценка реакций; предполагаемый подъём не добавляется в траекторию и пятна контакта.</p>
+      </div>
       <p id="tn-context" class="tn-context"></p><button id="tn-more">Условия и Mechanical trail</button>
     </aside></div>
+    <section id="tn-roll-details" class="tn-range" hidden aria-label="Roll jacking analysis"></section>
+    <section id="tn-anti-details" class="tn-range" hidden aria-label="Anti geometry analysis"></section>
     <section id="tn-range" class="tn-range"><div class="tn-range-heading"><h2>Working range</h2><span>Подбор по всему участку</span></div>
       <div class="tn-range-settings"><label>From <input id="tn-from" type="number" min="-55" max="55" step=".5" value="-45">°</label><label>To <input id="tn-to" type="number" min="-55" max="55" step=".5" value="-25">°</label><button id="tn-range-mirror">Зеркально</button></div>
       <div id="tn-curve"></div><p class="tn-small">Dynamic camber · LF фиолетовый / RF зелёный · пунктир — было · голубая линия — выбранный Steering angle</p>
@@ -284,15 +320,37 @@
     a+=tx(300,311,'Ackermann offset · mm · − внутрь / + наружу',G,15,'middle')+tx(300,338,'Пунктир — прежний эффект · зелёная точка — ближайший',O,14,'middle');
     return svg(a,'Какой Ackermann приближает прежний эффект после изменения Caster и Trail; перебор шагом 1,5 мм','0 0 600 355');
   }
+  function paintRoll(){
+    const a=M.rollAnalysis(state),r=a.result,z=M.calculate({...state,rc:0});
+    $('tn-visual').innerHTML=DriftRoll.visual(state);
+    $('tn-stage-caption').textContent=`Front RC ${f(state.rc,0)} mm · Ay ${signed(r.ay/9.81,2)} g · Jacking estimate`;
+    $('tn-live').innerHTML=[['Body roll',`${signed(r.roll,2)}°`,`RC 0 mm: ${signed(z.roll,2)}°`],['Front geometric transfer',`${signed(r.geom/1000,2)} kN`,'Упругая часть: '+signed(r.elastic/1000,2)+' kN'],['Net jacking',`${signed(a.jacking.net/1000,2)} kN`,'«+» вверх, «−» вниз · оценка'],['Whole-car transfer',`${signed(a.total/1000,2)} kN`,'Сумма передней и задней осей']].map(([name,value,note])=>`<div><span>${name}</span><strong>${value}</strong><small>${note}</small></div>`).join('');
+    $('tn-explain').textContent=DriftRoll.explanation(state);$('tn-roll-details').innerHTML=DriftRoll.details(state);
+    for(const k of ['rc','springRate','frontBarRate','steer','beta','speed','yaw'])$('rj-'+k+'-out').textContent=f(state[k]);
+    document.querySelectorAll('[data-roll-rc]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.rollRc===state.rc));
+  }
+  $('tn-roll-mirror').onclick=mirror;
+  document.querySelectorAll('[data-roll-rc]').forEach(b=>b.onclick=()=>change('rc',+b.dataset.rollRc));
+  document.addEventListener('open-roll',()=>{task='roll';history.replaceState(null,'','#roll');open()});
+  function paintAnti(){
+    const p=M.pitchResponse(state),zero=M.pitchResponse({...state,frontAntiDive:0,rearAntiSquat:0});
+    $('tn-visual').innerHTML=DriftAnti.visual(state);
+    $('tn-stage-caption').textContent=`Front anti-dive ${f(state.frontAntiDive,0)}% · Rear anti-squat ${f(state.rearAntiSquat,0)}%`;
+    $('tn-live').innerHTML=[['Front pitch travel',p.frontTravel,zero.frontTravel,'mm'],['Rear pitch travel',p.rearTravel,zero.rearTravel,'mm'],['Body pitch',p.pitch,zero.pitch,'°'],['Load transfer',Math.abs(p.limitedTransfer)/1000,Math.abs(zero.limitedTransfer)/1000,'kN']].map(([name,value,old,unit])=>`<div><span>${name}</span><strong>${signed(value)} ${unit}</strong><small>При 0% Anti: ${signed(old)} ${unit}</small></div>`).join('');
+    $('tn-explain').textContent=DriftAnti.explanation(state);$('tn-anti-details').innerHTML=DriftAnti.details(state);
+    document.querySelectorAll('[data-anti-g]').forEach(b=>b.setAttribute('aria-pressed',Math.abs(+b.dataset.antiG-state.longitudinalG)<.001));
+  }
+  document.querySelectorAll('[data-anti-g]').forEach(b=>b.onclick=()=>change('longitudinalG',+b.dataset.antiG));
+  document.addEventListener('open-anti',()=>{task='anti';history.replaceState(null,'','#anti');open()});
   function paint(){
-    const isCamber=task==='camber',isAck=task==='ack';$('tuning-lab').classList.toggle('tn-ack',isAck);$('tuning-lab').classList.toggle('tn-links',task==='links');$('tn-title').textContent=isCamber?'Caster / Camber':isAck?'Ackermann / Path':'Ackermann · Trail · Caster · Camber';
+    const isCamber=task==='camber',isAck=task==='ack';$('tuning-lab').classList.toggle('tn-ack',isAck);$('tuning-lab').classList.toggle('tn-links',task==='links');$('tuning-lab').classList.toggle('tn-anti',task==='anti');$('tuning-lab').classList.toggle('tn-roll',task==='roll');$('tn-title').textContent=isCamber?'Caster / Camber':isAck?'Ackermann / Path':task==='roll'?'Roll center / Roll jacking':task==='anti'?'Front anti-dive / Rear anti-squat':'Ackermann · Trail · Caster · Camber';
     document.querySelectorAll('[data-tn-task]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.tnTask===task));
-    $('tn-camber-controls').hidden=!isCamber;$('tn-contact-switch').hidden=!isCamber;$('tn-ack-controls').hidden=!isAck;$('tn-link-controls').hidden=task!=='links';$('tn-range').hidden=false;$('tn-view').hidden=isCamber;$('tn-playback').hidden=!isAck;
+    $('tn-camber-controls').hidden=!isCamber;$('tn-contact-switch').hidden=!isCamber;$('tn-ack-controls').hidden=!isAck;$('tn-link-controls').hidden=task!=='links';$('tn-anti-controls').hidden=task!=='anti';$('tn-anti-details').hidden=task!=='anti';$('tn-roll-controls').hidden=task!=='roll';$('tn-roll-details').hidden=task!=='roll';$('tn-range').hidden=['anti','roll'].includes(task);$('tn-view').hidden=isCamber||['anti','roll'].includes(task);$('tn-playback').hidden=!isAck;
     $('tn-view').textContent=task==='links'?(linkMatchView?'Схема связей':'Подбор Ackermann'):(viewPath?'Передняя ось':'Траектория');
-    if(isCamber)paintCamber();else if(isAck){prepareRuns();paintFrame()}else paintLinks();
-    if(!isCamber)paintCurve();optimizer?.context();
+    if(task==='roll')paintRoll();else if(task==='anti')paintAnti();else if(isCamber)paintCamber();else if(isAck){prepareRuns();paintFrame()}else paintLinks();
+    if(!isCamber&&!['roll','anti'].includes(task))paintCurve();optimizer?.context();
     document.querySelectorAll('[data-tn-key]').forEach(el=>{if(document.activeElement!==el)el.value=Number(state[el.dataset.tnKey].toFixed(3))});
-    for(const k of ['steer','caster','camber','kpi','ack'])$('tn-'+k+'-out').textContent=signed(state[k],k==='camber'?2:1);
+    for(const k of ['steer','caster','camber','kpi','ack','frontAntiDive','rearAntiSquat','longitudinalG','frontBrakeBias','rearWheelRate','springRate','motionRatio','bumpToe','reboundToe'])$('tn-'+k+'-out').textContent=signed(state[k],['camber','longitudinalG','motionRatio','bumpToe','reboundToe'].includes(k)?2:1);
     $('tn-hold-camber').checked=holdCamber;$('tn-target-row').hidden=!holdCamber;$('tn-camber').disabled=holdCamber;$('tn-camber-num').disabled=holdCamber;
     if(document.activeElement!==$('tn-target'))$('tn-target').value=targetCamber;$('tn-solve').textContent=solveStatus;
     $('tn-trail-lock').checked=lockTrail;$('tn-hold-lead').checked=holdLead;
@@ -301,12 +359,14 @@
     $('tn-lead-label').textContent=holdLead?'Leading wheel angle':'Central steering angle';
     $('tn-lead-angle').setAttribute('aria-label',$('tn-lead-label').textContent);$('tn-lead-number').setAttribute('aria-label',$('tn-lead-label').textContent+': точно');
     $('tn-ack-kind').textContent=`${ackType(state)} · ${offsetLabel(state.ack)} · ${state.rackSide===1?'рычаг перед осью':'рычаг за осью'}`;
-    $('tn-context').textContent=`Drift angle ${signed(state.beta)}° · Speed ${f(state.speed,0)} km/h · Yaw rate ${signed(state.yaw)}°/s · Trail ${f(state.trail)} mm · 235/45 R17${state.tyreWidth!==235||state.tyreAspect!==45||state.rimDiameter!==17?' → '+state.tyreWidth+'/'+state.tyreAspect+' R'+state.rimDiameter:''}`;
+    $('tn-context').textContent=`Drift angle ${signed(state.beta)}° · Speed ${f(state.speed,0)} km/h · Yaw rate ${signed(state.yaw)}°/s · Ax ${signed(state.longitudinalG??0,2)} g · Trail ${f(state.trail)} mm · 235/45 R17${state.tyreWidth!==235||state.tyreAspect!==45||state.rimDiameter!==17?' → '+state.tyreWidth+'/'+state.tyreAspect+' R'+state.rimDiameter:''}`;
     for(const id of ['tn-from','tn-to'])if(document.activeElement!==$(id))$(id).value=id==='tn-from'?from:to;
     $('tn-mobile-explain').innerHTML=$('tn-explain').innerHTML;
   }
 
   function help(){
+    if(task==='roll'){$('tn-dialog-title').textContent='High roll center / Roll jacking';$('tn-dialog-body').innerHTML=DriftRoll.help;$('tn-dialog').showModal();return}
+    if(task==='anti'){$('tn-dialog-title').textContent='Anti-dive / Anti-squat';$('tn-dialog-body').innerHTML=DriftAnti.help;$('tn-dialog').showModal();return}
     $('tn-dialog-title').textContent=task==='camber'?'Caster → Camber → Contact patch':'Ackermann → силы → траектория';
     $('tn-dialog-body').innerHTML=task==='camber'?`<p>Caster поворачивает колесо вокруг наклонной оси. На контррулении Leading может получать больше положительного Dynamic camber: тогда для того же положения к дороге нужен более отрицательный Static camber. У второго колеса изменение иное.</p><p>Выберите Target wheel и Steering angle. Включите <b>Hold dynamic camber</b>: при смене Caster, KPI или Steering angle приложение подберёт Static camber в пределах −5…−3°. Если цели достичь нельзя, будет показана граница. Совпадение Camber в одной точке не означает одинаковую кривую на всём вывороте.</p><p>При <b>Hold mechanical trail</b> плечо сохраняется. Если снять фиксацию, смена Caster меняет Trail при прежнем эквивалентном смещении ступицы. Один и тот же Trail не гарантирует одинаковый Self-steering: меняются силы и другие моменты.</p><p>График сравнивает обе настройки при одинаковых текущих Speed, Drift angle, Yaw rate и Steering angle. Camber only по умолчанию показывает обоим колёсам одинаковую нагрузку 3,37 kN. Camber + Load включает перенос веса. Пятна, площади и проценты под ними всегда используют один выбранный режим; серый контур соответствует Camber 0° при той же нагрузке. Площадь не измеряет сцепление реальной шины.</p><h3>Подбор Working range</h3><p>Перебор: Ackermann offset в заданных пределах с шагом 1,5 mm × Caster 4…6,5° шаг 0,5° × Static camber −5…−3° шаг 0,25° × KPI 8/10/12°. Контакт проверяется с шагом не более 2°. Для движения берутся три лучших по контакту на каждый Ackermann; Contact sweep уточняется до 0,5°. Глобальный оптимум не гарантируется. В карточке можно изменить любой из трёх углов: он фиксируется, свободные параметры подбираются заново при прежнем Ackermann.</p><p>Рейтинг Target wheel: Min area retention − 0,35 × Area variation. Для двух колёс берётся среднее. В режиме меньшего влияния второго колеса добавлены штрафы за средние |Fy| относительно capacity и |Yaw moment| относительно μFz·a. Площадь не используется как сила. Для Driving target дополнительно считается первый отклик 0,6 s или заданный манёвр перекладки 2 s. Учитываются одинаковые Rear drive и Rear grip; критерии показаны под выбором сценария. Совместный рейтинг: 35% контакт и 65% Driving target. Внутри каждого типа сначала выбираются варианты, достигшие обеих целей. Показаны лучший проверенный Reverse, Zero и Positive, чтобы сравнить все три типа; порядок карточек не означает рейтинг.</p><p>Проверяйте контакт в диапазоне вместе со Slip angle и моментами. Уменьшение Caster само по себе не обещает устойчивость всего автомобиля.</p>`:`<p>Зелёная машина — текущие настройки, оранжевая — сохранённые. Серый поворот показывает исходную дугу при постоянных Speed и Yaw rate; рассчитанные траектории могут с неё уйти.</p><p><b>Isolate trailing wheel</b> задаёт одинаковый фактический угол Leading на старте. При смене Ackermann пересчитывается положение рулевого механизма. Так виднее вклад Trailing. Во время прогона руль удерживается; Bump steer может изменить фактические углы. При β около нуля роль Leading не назначается.</p><p>По умолчанию обе машины сохраняют одинаковое положение рулевого механизма. В исходном примере Positive раскрывает дугу и уменьшает угол, Reverse сужает дугу и увеличивает угол. Фиксация только Leading меняет положение руля и может дать другой результат — поэтому этот опыт выделен отдельно. Обе машины стартуют с одинаковыми скоростью, углом заноса и вращением кузова. Rear drive, Brake input и Rear grip одинаковы. Автоматической коррекции рулём или газом нет. Поэтому исходный дрифт не обязан сохраняться три секунды.</p><p>Рассчитываются силы четырёх шин, перемещение кузова и его вращение. Передние колёса используют геометрию MacPherson. Задние направлены вдоль кузова; Rear drive — постоянный запрос тяговой силы как доля доступной силы, а не положение педали газа. Совместная продольная и боковая сила ограничена кругом трения.</p><p>Масса 1250 kg, передняя развесовка 55%, CG height 0,52 m, Yaw inertia 2100 kg·m². Перенос нагрузки приближённый; его сглаживание 0,15 s — допущение, не расчёт амортизаторов. Нет двигателя, дифференциала, нагрева, реальной характеристики шин и полной кинематики подвески.</p><p>Прогон прекращается при Speed &lt; 8 km/h, |Drift angle| &gt; 80°, |Yaw rate| &gt; 150°/s нулевой нагрузке колеса или потере исходной стороны заноса. Два результата сравниваются в один и тот же момент до первой границы модели.</p><p>Positive / Reverse не задают исход заранее: результат зависит от сил обеих осей. Это учебное сравнение, а не прогноз конкретной машины.</p><p><a href="https://www.mathworks.com/help/vdynblks/ref/vehiclebody3dof.html" target="_blank" rel="noopener">Уравнения плоского движения кузова с четырьмя колёсами</a> · <a href="https://www.wisefab.com/resources/everything-you-need-to-know-about-ackermann-in-drifting" target="_blank" rel="noopener">Wisefab: Ackermann в дрифте</a></p>`;
     if(task==='links'){
@@ -321,7 +381,7 @@
   }
   function conditions(){
     $('tn-dialog-title').textContent='Условия сравнения';
-    const fields=[['beta','Drift angle',-55,55,1,'°'],['speed','Speed',8,110,1,'km/h'],['yaw','Yaw rate',-40,40,1,'°/s'],['trail','Mechanical trail',-10,100,1,'mm'],['tyrePressure','Tire pressure',1.4,3,.1,'bar']];
+    const fields=[['longitudinalG','Longitudinal acceleration',-1,1,.05,'g'],['beta','Drift angle',-55,55,1,'°'],['speed','Speed',8,110,1,'km/h'],['yaw','Yaw rate',-40,40,1,'°/s'],['trail','Mechanical trail',-10,100,1,'mm'],['tyrePressure','Tire pressure',1.4,3,.1,'bar']];
     $('tn-dialog-body').innerHTML=fields.map(([k,n,min,max,step,u])=>`<label class="tn-condition">${n}<span><input data-tn-condition="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${state[k]}"> ${u}</span></label>`).join('')+`<label class="tn-condition">Steering arm position<select id="tn-side"><option value="1">Перед осью</option><option value="-1">За осью</option></select></label><p>Изменение условий пересчитывает сравнение. Ackermann offset по-прежнему означает смещение наружу (+) или внутрь (−) на обоих кулаках.</p>`+(task==='ack'?`<h3>Задняя ось и педали</h3>${[['drive','Rear drive',0,.95,.05],['rearGrip','Rear grip factor',.4,1.3,.05],['brake','Brake input',0,.6,.05],['brakeBias','Front brake bias',0,1,.05]].map(([k,n,min,max,step])=>`<label class="tn-condition">${n}<input data-tn-drive="${k}" type="number" min="${min}" max="${max}" step="${step}" value="${inputs[k]}"></label>`).join('')}<p>Rear drive и Brake input — нормированные запросы силы, не проценты положения педалей. Эти условия одинаковы в обоих прогонах.</p>`:'');
     $('tn-side').value=state.rackSide;$('tn-side').onchange=e=>change('rackSide',+e.target.value);
     $('tn-dialog-body').querySelectorAll('[data-tn-condition]').forEach(el=>el.oninput=()=>{if(el.value!==''&&el.validity.valid){change(el.dataset.tnCondition,+el.value);if(el.dataset.tnCondition==='beta'){wheel=T.leading(state)??wheel;leadTarget=M.calculate(state).wheels[wheel].delta}schedule()}});
@@ -334,7 +394,7 @@
   $('tn-from-sweep').onclick=()=>{task='camber';open()};
   $('lessons').insertAdjacentHTML('afterbegin','<article class="lesson"><div class="index">НОВОЕ</div><h3>Ackermann / Path</h3><p>Сравните первый отклик при одинаковом Central steering angle: схему дуги и свободное движение без коррекций.</p><button id="tn-from-course">Сравнить траектории</button></article>');
   $('tn-from-course').onclick=()=>{task='ack';open()};
-  const initialTask=location.hash.slice(1);if(['camber','ack','links'].includes(initialTask))task=initialTask;
+  const initialTask=location.hash.slice(1);if(['camber','ack','links','anti','roll'].includes(initialTask))task=initialTask;
   optimizer=DriftOptimizer.mount({
     getSetup:()=>({...state}),getWheel:()=>wheel,getRange:()=>({from,to}),
     applySetup:(setup,config)=>{state={...setup};if(config.kind!=='contact')inputs={...D.defaults,drive:config.drive,rearGrip:config.rearGrip,brake:0};holdCamber=false;lockTrail=true;holdLead=false;leadTarget=state.steer;solveStatus='Применён выбранный вариант; пунктир показывает настройки «Было».';runKey='';stop();time=0;sync();paint()},
