@@ -24,7 +24,7 @@ const offsets=Array.from({length:13},(_,i)=>-9+1.5*i),grid=T.candidates(s,offset
 assert.equal(grid.length,2106);assert.deepEqual([...new Set(grid.map(s=>s.ack))],offsets);
 assert.ok(grid.every(v=>v.trail===s.trail&&v.steer===s.steer));
 const p=S.presets.transition,setup={...s,beta:-p.angle,speed:p.speed,yaw:p.speed/3.6/p.radius*M.deg,steer:-p.steer};
-const config={kind:'transition',radius:p.radius,angle:p.angle};
+const config={kind:'transition',radius:p.radius,angle:p.angle,driver:'program'};
 const program=S.program(setup,config);
 close(D.steeringAt(setup,.05,program),-24);close(D.steeringAt(setup,1.1,program),19);
 const transition=S.evaluate(setup,config);

@@ -20,6 +20,12 @@
     const r=M.calculate(s);
     return {result:r,wheels:r.wheels.map(w=>{const patch=M.contactPatch(s,w),zero=M.contactPatch(s,{...w,camber:0});return {...w,patch,area:patch.areaCm2,retention:zero.areaCm2>1e-8?100*patch.areaCm2/zero.areaCm2:null}})};
   }
+  function contactView(s,equalLoad=true){
+    const result=at(s);
+    return {...result,equalLoad,wheels:result.wheels.map(w=>{const displayLoad=equalLoad?3372:w.Fz,displayPatch=M.contactPatch(s,{...w,Fz:displayLoad}),referencePatch=M.contactPatch(s,{...w,Fz:displayLoad,camber:0});return {...w,displayLoad,displayPatch,referencePatch,displayArea:displayPatch.areaCm2,displayRetention:referencePatch.areaCm2>1e-8?100*displayPatch.areaCm2/referencePatch.areaCm2:null}})};
+  }
+  const ackType=s=>Math.abs(s.ack)<.01?'Zero':s.ack*s.rackSide>0?'Positive':'Reverse';
+  const selectAckTypes=ranked=>['Reverse','Zero','Positive'].map(name=>ranked.find(r=>ackType(r.setup)===name)).filter(Boolean);
   function angles(from,to,step=2){const lo=Math.min(from,to),hi=Math.max(from,to),count=Math.max(1,Math.ceil((hi-lo)/step));return Array.from({length:count+1},(_,i)=>lo+(hi-lo)*i/count)}
   function range(s,from,to,wheel,goal='leading',step=2){
     const points=angles(from,to,step).map(steer=>({steer,...at({...s,steer})}));
@@ -48,6 +54,6 @@
     const best=points.filter(p=>p.reachable).sort((a,b)=>a.error-b.error||Math.abs(a.ack-s.ack)-Math.abs(b.ack-s.ack))[0]??null;
     return {points,best,target,targetAngle,base,baselineReachable:baseSteer.reached,metric};
   }
-  const api={leading,solveCamber,solveSteer,at,range,candidates,angles,matchAck};
+  const api={leading,solveCamber,solveSteer,at,contactView,ackType,selectAckTypes,range,candidates,angles,matchAck};
   root.DriftTuning=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
